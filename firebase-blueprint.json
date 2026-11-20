@@ -1,0 +1,296 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated user profile and worker activation state.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified Google account email",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name from Google profile",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "worker"],
+          "description": "Assigned system role"
+        },
+        "active": {
+          "type": "boolean",
+          "description": "Whether worker has activated via company access code"
+        },
+        "removed": {
+          "type": "boolean",
+          "description": "Whether admin has revoked access"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of account creation"
+        },
+        "lastSeenAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of latest heartbeat ping"
+        },
+        "joinedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when worker activated with access code"
+        }
+      },
+      "required": ["uid", "email", "displayName", "role", "active", "removed", "createdAt", "lastSeenAt"]
+    },
+    "CodeVerification": {
+      "title": "CodeVerification",
+      "description": "Write-only atomic verification document used in activation batches so the access code is never stored on user profiles or read by workers.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "code": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 24,
+          "pattern": "^[A-Z0-9]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "code", "createdAt"]
+    },
+    "SecurityConfig": {
+      "title": "SecurityConfig",
+      "description": "Admin-only document holding the company access code.",
+      "type": "object",
+      "properties": {
+        "accessCode": {
+          "type": "string",
+          "minLength": 4,
+          "maxLength": 24,
+          "pattern": "^[A-Z0-9]+$"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        }
+      },
+      "required": ["accessCode", "updatedAt", "updatedBy"]
+    },
+    "PublicConfig": {
+      "title": "PublicConfig",
+      "description": "Non-secret company display settings for printouts and currency formatting.",
+      "type": "object",
+      "properties": {
+        "companyName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "currencySymbol": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 8
+        },
+        "initialized": {
+          "type": "boolean"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["companyName", "currencySymbol", "initialized", "updatedAt"]
+    },
+    "RequestCounter": {
+      "title": "RequestCounter",
+      "description": "Atomic sequential counter for REQ-XXXX numbering.",
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "number",
+          "description": "Current monotonic request counter"
+        },
+        "lastRequestId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["count", "lastRequestId", "updatedAt"]
+    },
+    "SiteRequest": {
+      "title": "SiteRequest",
+      "description": "Material and equipment procurement request submitted by an active worker.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "requestNumberNum": {
+          "type": "number",
+          "description": "Sequential integer starting at 1"
+        },
+        "requestNumber": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 16,
+          "pattern": "^REQ-[0-9]{4,}$"
+        },
+        "workerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "workerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "workerEmail": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "site": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 1000
+        },
+        "items": {
+          "type": "array",
+          "description": "Bounded list of 1 to 50 requested items"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "approved", "delivered", "rejected"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "requestNumberNum", "requestNumber", "workerId", "workerName", "workerEmail", "site", "purpose", "notes", "items", "status", "createdAt", "updatedAt"]
+    },
+    "SignInLog": {
+      "title": "SignInLog",
+      "description": "Audit log of Google sign-ins viewable only by the administrator.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "minLength": 3,
+          "maxLength": 160
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "worker"]
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["id", "uid", "email", "displayName", "role", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profiles containing role, activation state, removal flag, and heartbeat timestamp."
+    },
+    "/codeVerifications/{userId}": {
+      "schema": { "$ref": "#/entities/CodeVerification" },
+      "description": "Write-only verification bridge for atomic company access code checks."
+    },
+    "/appConfig/security": {
+      "schema": { "$ref": "#/entities/SecurityConfig" },
+      "description": "Admin-only configuration containing the company access code."
+    },
+    "/appConfig/public": {
+      "schema": { "$ref": "#/entities/PublicConfig" },
+      "description": "Public company name and currency symbol for printouts."
+    },
+    "/counters/requests": {
+      "schema": { "$ref": "#/entities/RequestCounter" },
+      "description": "Atomic sequential counter ensuring race-free REQ-XXXX numbers."
+    },
+    "/requests/{requestId}": {
+      "schema": { "$ref": "#/entities/SiteRequest" },
+      "description": "Construction procurement requests scoped by workerId."
+    },
+    "/signInLogs/{logId}": {
+      "schema": { "$ref": "#/entities/SignInLog" },
+      "description": "Sign-in audit trail readable only by the administrator."
+    }
+  }
+}

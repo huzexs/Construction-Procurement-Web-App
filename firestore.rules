@@ -1,0 +1,302 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Global Primitives
+    // -------------------------------------------------------------------------
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() &&
+        request.auth.token.email_verified == true &&
+        request.auth.token.email is string;
+    }
+
+    function isAdmin() {
+      return isVerifiedUser() &&
+        request.auth.token.email.lower() == 'abubakarkhuzaifa001@gmail.com';
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isActiveNotRemovedWorker() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      return userDoc.active == true &&
+        userDoc.removed == false &&
+        (userDoc.role == 'worker' || userDoc.role == 'admin');
+    }
+
+    // -------------------------------------------------------------------------
+    // Entity Validation Blueprints
+    // -------------------------------------------------------------------------
+    function isValidUser(data, userId) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'role', 'active', 'removed', 'createdAt', 'lastSeenAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'displayName', 'role', 'active', 'removed', 'createdAt', 'lastSeenAt', 'joinedAt']) &&
+        data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid == userId &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120 &&
+        data.role in ['admin', 'worker'] &&
+        data.active is bool &&
+        data.removed is bool &&
+        data.createdAt is timestamp &&
+        data.lastSeenAt is timestamp &&
+        (!('joinedAt' in data) || data.joinedAt == null || data.joinedAt is timestamp);
+    }
+
+    function isValidCodeVerification(data, userId) {
+      return data.keys().hasAll(['uid', 'code', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'code', 'createdAt']) &&
+        data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid == userId &&
+        data.code is string && data.code.size() >= 4 && data.code.size() <= 24 && data.code.matches('^[A-Z0-9]+$') &&
+        data.createdAt is timestamp;
+    }
+
+    function isValidSecurityConfig(data) {
+      return data.keys().hasAll(['accessCode', 'updatedAt', 'updatedBy']) &&
+        data.keys().hasOnly(['accessCode', 'updatedAt', 'updatedBy']) &&
+        data.accessCode is string && data.accessCode.size() >= 4 && data.accessCode.size() <= 24 && data.accessCode.matches('^[A-Z0-9]+$') &&
+        data.updatedAt is timestamp &&
+        data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128;
+    }
+
+    function isValidPublicConfig(data) {
+      return data.keys().hasAll(['companyName', 'currencySymbol', 'initialized', 'updatedAt']) &&
+        data.keys().hasOnly(['companyName', 'currencySymbol', 'initialized', 'updatedAt']) &&
+        data.companyName is string && data.companyName.size() >= 1 && data.companyName.size() <= 120 &&
+        data.currencySymbol is string && data.currencySymbol.size() >= 1 && data.currencySymbol.size() <= 8 &&
+        data.initialized is bool &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidCounter(data) {
+      return data.keys().hasAll(['count', 'lastRequestId', 'updatedAt']) &&
+        data.keys().hasOnly(['count', 'lastRequestId', 'updatedAt']) &&
+        data.count is int && data.count >= 0 &&
+        isValidId(data.lastRequestId) &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidRequestItem(item) {
+      return item is map &&
+        item.keys().hasAll(['id', 'name', 'quantity', 'unit']) &&
+        item.keys().hasOnly(['id', 'name', 'quantity', 'unit', 'unitPrice']) &&
+        item.id is string && item.id.size() >= 1 && item.id.size() <= 64 &&
+        item.name is string && item.name.size() >= 1 && item.name.size() <= 160 &&
+        item.quantity is number && item.quantity > 0 &&
+        item.unit in ['pcs', 'bags', 'kg', 'tonnes', 'm', 'm²', 'm³', 'litres', 'rolls', 'packs', 'trips', 'sets'] &&
+        (!('unitPrice' in item) || item.unitPrice == null || (item.unitPrice is number && item.unitPrice >= 0));
+    }
+
+    function matchesSequentialCode(n, code) {
+      return (n < 10 && code == 'REQ-000' + string(n)) ||
+        (n >= 10 && n < 100 && code == 'REQ-00' + string(n)) ||
+        (n >= 100 && n < 1000 && code == 'REQ-0' + string(n)) ||
+        (n >= 1000 && code == 'REQ-' + string(n));
+    }
+
+    function isValidRequest(data, requestId) {
+      return data.keys().hasAll(['id', 'requestNumberNum', 'requestNumber', 'workerId', 'workerName', 'workerEmail', 'site', 'purpose', 'notes', 'items', 'status', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'requestNumberNum', 'requestNumber', 'workerId', 'workerName', 'workerEmail', 'site', 'purpose', 'notes', 'items', 'status', 'createdAt', 'updatedAt']) &&
+        data.id is string && data.id.size() >= 1 && data.id.size() <= 128 && data.id == requestId &&
+        data.requestNumberNum is int && data.requestNumberNum >= 1 &&
+        data.requestNumber is string && data.requestNumber.size() >= 8 && data.requestNumber.size() <= 16 &&
+        matchesSequentialCode(data.requestNumberNum, data.requestNumber) &&
+        isValidId(data.workerId) &&
+        data.workerName is string && data.workerName.size() >= 1 && data.workerName.size() <= 120 &&
+        data.workerEmail is string && data.workerEmail.size() >= 3 && data.workerEmail.size() <= 160 &&
+        data.site is string && data.site.size() >= 1 && data.site.size() <= 160 &&
+        data.purpose is string && data.purpose.size() >= 1 && data.purpose.size() <= 240 &&
+        data.notes is string && data.notes.size() <= 1000 &&
+        data.items is list && data.items.size() >= 1 && data.items.size() <= 50 && isValidRequestItem(data.items[0]) &&
+        data.status in ['pending', 'approved', 'delivered', 'rejected'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidSignInLog(data, logId) {
+      return data.keys().hasAll(['id', 'uid', 'email', 'displayName', 'role', 'timestamp']) &&
+        data.keys().hasOnly(['id', 'uid', 'email', 'displayName', 'role', 'timestamp']) &&
+        data.id is string && data.id.size() >= 1 && data.id.size() <= 128 && data.id == logId &&
+        isValidId(data.uid) &&
+        data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120 &&
+        data.role in ['admin', 'worker'] &&
+        data.timestamp is timestamp;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collections
+    // -------------------------------------------------------------------------
+
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+
+      allow create: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isOwner(userId) &&
+        isValidUser(incoming(), userId) &&
+        incoming().email == request.auth.token.email &&
+        incoming().createdAt == request.time &&
+        incoming().lastSeenAt == request.time &&
+        (
+          (isAdmin() && incoming().role == 'admin' && incoming().active == true && incoming().removed == false) ||
+          (!isAdmin() && incoming().role == 'worker' && incoming().active == false && incoming().removed == false && (!('joinedAt' in incoming()) || incoming().joinedAt == null))
+        );
+
+      allow update: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isValidUser(incoming(), userId) &&
+        incoming().uid == existing().uid &&
+        incoming().email == existing().email &&
+        incoming().role == existing().role &&
+        incoming().createdAt == existing().createdAt &&
+        (
+          // Action 1: Admin managing worker access or updating own heartbeat
+          (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['active', 'removed', 'lastSeenAt', 'displayName', 'joinedAt'])) ||
+          // Action 2: Non-removed owner sending 2-minute heartbeat / syncing displayName
+          (isOwner(userId) && existing().removed == false &&
+            incoming().removed == existing().removed &&
+            incoming().active == existing().active &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['lastSeenAt', 'displayName']) &&
+            incoming().lastSeenAt == request.time) ||
+          // Action 3: Non-removed inactive worker activating with company access code
+          (isOwner(userId) && existing().removed == false && existing().active == false &&
+            incoming().removed == false &&
+            incoming().active == true &&
+            incoming().joinedAt == request.time &&
+            incoming().lastSeenAt == request.time &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['active', 'joinedAt', 'lastSeenAt', 'displayName']) &&
+            exists(/databases/$(database)/documents/appConfig/security) &&
+            getAfter(/databases/$(database)/documents/codeVerifications/$(userId)).data.createdAt == request.time &&
+            getAfter(/databases/$(database)/documents/codeVerifications/$(userId)).data.code == get(/databases/$(database)/documents/appConfig/security).data.accessCode)
+        );
+
+      allow delete: if false;
+    }
+
+    match /codeVerifications/{userId} {
+      allow read: if false;
+      allow create, update: if isVerifiedUser() &&
+        isValidId(userId) &&
+        isOwner(userId) &&
+        isValidCodeVerification(incoming(), userId) &&
+        incoming().createdAt == request.time &&
+        exists(/databases/$(database)/documents/users/$(userId)) &&
+        get(/databases/$(database)/documents/users/$(userId)).data.removed == false &&
+        get(/databases/$(database)/documents/users/$(userId)).data.active == false &&
+        exists(/databases/$(database)/documents/appConfig/security) &&
+        incoming().code == get(/databases/$(database)/documents/appConfig/security).data.accessCode &&
+        existsAfter(/databases/$(database)/documents/users/$(userId));
+      allow delete: if false;
+    }
+
+    match /appConfig/security {
+      allow get: if isAdmin();
+      allow list: if false;
+      allow create, update: if isAdmin() &&
+        isValidSecurityConfig(incoming()) &&
+        incoming().updatedAt == request.time &&
+        incoming().updatedBy == request.auth.uid;
+      allow delete: if false;
+    }
+
+    match /appConfig/public {
+      allow get: if isSignedIn();
+      allow list: if false;
+      allow create, update: if isAdmin() &&
+        isValidPublicConfig(incoming()) &&
+        incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    match /counters/requests {
+      allow get: if isVerifiedUser() && (isAdmin() || isActiveNotRemovedWorker());
+      allow list: if false;
+      allow create: if isAdmin() &&
+        isValidCounter(incoming()) &&
+        incoming().count == 0 &&
+        incoming().lastRequestId == 'INIT' &&
+        incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() &&
+        isValidCounter(incoming()) &&
+        (isAdmin() || isActiveNotRemovedWorker()) &&
+        incoming().count == existing().count + 1 &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['count', 'lastRequestId', 'updatedAt']) &&
+        existsAfter(/databases/$(database)/documents/requests/$(incoming().lastRequestId)) &&
+        getAfter(/databases/$(database)/documents/requests/$(incoming().lastRequestId)).data.requestNumberNum == incoming().count;
+      allow delete: if false;
+    }
+
+    match /requests/{requestId} {
+      allow get: if isValidId(requestId) &&
+        (isAdmin() || (isSignedIn() && existing().workerId == request.auth.uid));
+      allow list: if isAdmin() || (isSignedIn() && existing().workerId == request.auth.uid);
+
+      allow create: if isVerifiedUser() &&
+        isValidId(requestId) &&
+        isValidRequest(incoming(), requestId) &&
+        incoming().workerId == request.auth.uid &&
+        incoming().workerEmail == request.auth.token.email &&
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        (isAdmin() || isActiveNotRemovedWorker()) &&
+        exists(/databases/$(database)/documents/counters/requests) &&
+        get(/databases/$(database)/documents/counters/requests).data.count + 1 == incoming().requestNumberNum &&
+        getAfter(/databases/$(database)/documents/counters/requests).data.count == incoming().requestNumberNum &&
+        getAfter(/databases/$(database)/documents/counters/requests).data.lastRequestId == requestId;
+
+      allow update: if isAdmin() &&
+        isValidId(requestId) &&
+        isValidRequest(incoming(), requestId) &&
+        incoming().workerId == existing().workerId &&
+        incoming().workerName == existing().workerName &&
+        incoming().workerEmail == existing().workerEmail &&
+        incoming().requestNumberNum == existing().requestNumberNum &&
+        incoming().requestNumber == existing().requestNumber &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'items', 'updatedAt']);
+
+      allow delete: if false;
+    }
+
+    match /signInLogs/{logId} {
+      allow get: if isValidId(logId) && isAdmin();
+      allow list: if isAdmin();
+      allow create: if isVerifiedUser() &&
+        isValidId(logId) &&
+        isValidSignInLog(incoming(), logId) &&
+        incoming().uid == request.auth.uid &&
+        incoming().email == request.auth.token.email &&
+        incoming().timestamp == request.time &&
+        (incoming().role == 'worker' || isAdmin());
+      allow update, delete: if false;
+    }
+  }
+}

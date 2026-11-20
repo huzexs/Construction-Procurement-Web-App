@@ -1,0 +1,8 @@
+{
+  "name": "Site Requests",
+  "description": "Construction material and equipment procurement requests with role-based access, sequential numbering, and printable requisitions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
