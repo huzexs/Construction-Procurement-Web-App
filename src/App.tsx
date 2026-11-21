@@ -37,6 +37,7 @@ import type {
   UserProfile,
 } from './types';
 import { filterRequests, formatRequestNumber } from './utils/requests';
+import { formatFriendlyFirebaseError } from './utils/errors';
 import { AccessCodeGate } from './components/AccessCodeGate';
 import { AdminPrintableRequirements } from './components/AdminPrintableRequirements';
 import { AdminReportView } from './components/AdminReportView';
@@ -126,7 +127,7 @@ export default function App() {
           setCurrentUser(nextProfile);
         });
       } catch (err) {
-        setAuthError(err instanceof Error ? err.message : 'Unable to load user account.');
+        setAuthError(formatFriendlyFirebaseError(err));
       } finally {
         setAuthLoading(false);
         setAuthReady(true);
@@ -211,9 +212,9 @@ export default function App() {
     try {
       await signInWithGoogle();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Google sign-in failed.';
+      const msg = err instanceof Error ? err.message : String(err ?? '');
       if (!msg.includes('popup-closed-by-user')) {
-        setAuthError(msg);
+        setAuthError(formatFriendlyFirebaseError(err));
       }
       setAuthLoading(false);
     }

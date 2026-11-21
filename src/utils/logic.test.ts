@@ -11,6 +11,7 @@ import {
   aggregateReportItems,
   validateNewRequestInput,
 } from './requests';
+import { formatFriendlyFirebaseError } from './errors';
 import type { SiteRequest } from '../types';
 
 test('formatRequestNumber formats 4+ digits sequentially', () => {
@@ -173,4 +174,18 @@ test('validateNewRequestInput catches missing fields and invalid quantities', ()
   });
   assert.equal(ok.valid, true);
   assert.equal(ok.sanitized?.items[0].quantity, 5.5);
+});
+
+test('formatFriendlyFirebaseError surfaces actionable Netlify domain and Firestore messages', () => {
+  const unauth = formatFriendlyFirebaseError(
+    new Error('Firebase: Error (auth/unauthorized-domain).'),
+    'site-requests.netlify.app'
+  );
+  assert.match(unauth, /site-requests\.netlify\.app/);
+  assert.match(unauth, /Authorized domains/);
+
+  const wrappedFirestore = formatFriendlyFirebaseError(
+    new Error(JSON.stringify({ error: 'Missing or insufficient permissions.' }))
+  );
+  assert.match(wrappedFirestore, /Permission denied by Firestore security rules/);
 });
